@@ -7,7 +7,7 @@
 </div>
 
 <p align="center" color="#6a737d">
-Sub-Store 后端的 Cloudflare Workers 移植版
+A port of Cloudflare Workers to the Sub-Store backend
 </p>
 
 <p align="center">
@@ -20,30 +20,30 @@ Sub-Store 后端的 Cloudflare Workers 移植版
 </a>
 </p>
 
-> **注意**：一键部署按钮**仅供参考**，由于项目需要本地构建（esbuild + Sub-Store 源码），实际无法直接通过此按钮完成部署。请参照下方[手动部署步骤](#部署)。
+> **Note:** The one-click deployment button is for reference only. Since the project requires local building (esbuild + Sub-Store source code), deployment cannot actually be completed directly using this button. Please refer to the following...[手动部署步骤](#部署)。
 >
-> **自动部署**：本仓库已内置 GitHub Actions 工作流，每天自动检测上游 Sub-Store 更新并部署到 Cloudflare。只需配置 Secrets 即可开启，无需本地操作。详见 [GitHub Actions 自动同步上游](#同步更新)。
+> **Automatic Deployment:** This repository has a built-in GitHub Actions workflow that automatically detects and deploys updates to the upstream Sub-Store to Cloudflare daily. Enabling this only requires configuring Secrets; no local intervention is needed. See details. [GitHub Actions 自动同步上游](#同步更新)。
 
-## 简介
+## Introduction
 
-将 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 后端部署到 Cloudflare Workers / Pages，无需服务器，免费使用。
+Will [Sub-Store](https://github.com/sub-store-org/Sub-Store) The backend is deployed to Cloudflare Workers/Pages, requiring no server and is free to use.
 
-- **零服务器**：运行在 Cloudflare 边缘网络
-- **KV 持久化**：数据存储在 Cloudflare KV
-- **完整功能**：复用原始后端全部业务逻辑（订阅管理、格式转换、下载、预览等）
-- **预编译解析器**：peggy 文法在构建时编译，避免运行时 eval()
+- **Zero Servers:** Running on the Cloudflare edge network
+- **KV Persistence**: Data is stored in Cloudflare KV.
+- **Full Functionality:** Reuses all original backend business logic (subscription management, format conversion, download, preview, etc.)
+- **Pre-compiled parser:** Peggy grammars are compiled at build time, avoiding runtime `eval()`.
 
-## 目录
+## Table of contents
 
-- [部署](#部署)（核心流程，建议从这里开始）
-- [进阶配置 / 平台说明](#进阶配置--平台说明)（推送、环境变量、本地开发等，已折叠）
+- [部署](#部署)(Core process, it is recommended to start here)
+- [进阶配置 / 平台说明](#进阶配置--平台说明)(Push notifications, environment variables, local development, etc. have been collapsed)
 - [FAQ](#faq)
 - [同步更新](#同步更新)
 - [Surge 面板脚本](#surge-面板脚本)
 - [致谢](#致谢) ｜ [许可证](#许可证)
 
 <details>
-<summary><b>架构说明</b>（如果你只想部署可跳过）</summary>
+<summary><b>Architecture Description</b>(Skip this if you only want to deploy)</summary>
 
 ```
 sub-store-workers/src/        ← Workers 适配层（6 个文件）
@@ -51,31 +51,31 @@ Sub-Store/backend/src/        ← 原始后端源码（直接复用）
 esbuild.js                    ← 构建脚本，通过插件桥接两者
 ```
 
-仅替换了平台相关层，核心逻辑零修改：
+Only the platform-related layers were replaced; the core logic remained unchanged.
 
-| Workers 文件 | 作用 |
+Workers Files | Purpose |
 |---|---|
-| `vendor/open-api.js` | KV 替换 fs，fetch 替换 undici |
+| `vendor/open-api.js` | KV replaces fs, fetch replaces undici |
 | `vendor/express.js` | Workers fetch handler 替换 Node express |
-| `core/app.js` | 导入 Workers 版 OpenAPI |
-| `utils/env.js` | 环境检测 |
-| `restful/token.js` | 允许 Workers 签发 token |
-| `index.js` | Workers 入口 |
+| `core/app.js` | Import Workers version of OpenAPI |
+| `utils/env.js` Environmental Monitoring |
+| `restful/token.js` | Allow Workers to issue tokens |
+| `index.js` | Workers Entrance |
 
-更详细的项目总图见 [`mydocs/codemap/project-overview.md`](mydocs/codemap/project-overview.md)。
+For more detailed project master plans, please see [`mydocs/codemap/project-overview.md`](mydocs/codemap/project-overview.md)。
 
 </details>
 
-## 部署
+## deploy
 
-> 部署总览：**1.准备 → 2.上传 Workers/Pages → 3.设密码（必做）→ 4.连接前端**
+> Deployment Overview: **1. Preparation → 2. Upload Workers/Pages → 3. Set Password (Required) → 4. Connect to Frontend**
 >
-> 为什么两个都要部？`*.workers.dev` 在国内被 GFW 封锁，`*.pages.dev` 走 Cloudflare CDN 通常可直连。
+> Why do we need both departments?`*.workers.dev` It is blocked in the country by the Great Firewall (GFW).`*.pages.dev` Using Cloudflare CDN usually allows for direct connection.
 >
-> - **有自定义域名**：只用 Workers 即可
-> - **无自定义域名**：Pages 对外提供 API，Workers 在后台跑 Cron。
+> - **Custom domain available:** Workers is sufficient.
+> - **No custom domain: Pages provides an API to the outside world, and Workers run Cron in the background.
 
-### 1. 克隆仓库
+### 1. Cloning Repository
 
 ```bash
 # 目录结构必须如下：
@@ -90,19 +90,19 @@ cd sub-store-workers
 npm install
 ```
 
-### 2. 登录 Cloudflare
+### 2. Log in to Cloudflare
 
 ```bash
 npx wrangler login
 ```
 
-### 3. 创建 KV 命名空间
+### 3. Create a key-value namespace
 
 ```bash
 npx wrangler kv namespace create SUB_STORE_DATA
 ```
 
-将返回的 `id` 填入 `wrangler.toml`：
+Will return `id` Fill in `wrangler.toml`：
 
 ```toml
 [[kv_namespaces]]
@@ -110,16 +110,16 @@ binding = "SUB_STORE_DATA"
 id = "你的KV命名空间ID"
 ```
 
-### 4. 构建 & 部署
+### 4. Building & Deploying
 
-**两者都需要部署：**
+Both need to be deployed:
 
-| 部署方式 | 域名 | 用途 |
+| Deployment method | Domain name | Purpose |
 |---|---|---|
-| **Workers** | `*.workers.dev` 或自定义域名 | API + Cron 定时同步 |
-| **Pages** | `*.pages.dev` | API（国内可直连） |
+| **Workers** | `*.workers.dev` Or a custom domain | API + Cron scheduled synchronization |
+| **Pages** | `*.pages.dev` | API (Direct connection available within China) |
 
-> ⚠️ **执行下方部署命令前，请先确认已完成「1. 克隆仓库」「2. 登录 Cloudflare」「3. 创建 KV 命名空间」三步**，并完整阅读下文「5. 连接前端」「6. API 鉴权」两节。**部署完未设密码前 Worker 是公开的，任何人都能管理你的数据。**
+> ⚠️ **Before executing the deployment commands below, please ensure you have completed the following three steps: "1. Clone the repository", "2. Log in to Cloudflare", and "3. Create a KV namespace", and carefully read the following sections: "5. Connect to the frontend" and "6. API authentication".** **After deployment, the Worker is public until a password is set; anyone can manage your data.**
 
 ```bash
 # Workers 部署（含 Cron Triggers）
@@ -129,7 +129,7 @@ npm run deploy
 npm run deploy:pages
 ```
 
-> **强烈建议部署后立即设置鉴权密码**，否则任何人都能管理你的 Sub-Store 数据：
+> **It is strongly recommended to set an authentication password immediately after deployment**, otherwise anyone can manage your Sub-Store data.
 >
 > ```bash
 > # Windows
@@ -139,59 +139,59 @@ npm run deploy:pages
 > npm run rotate-secret:sh
 > ```
 >
-> 脚本会生成随机 URL-safe 密码，写入 Cloudflare Worker Secret，并复制到剪贴板。详细说明见下文“6. API 鉴权”。
+> The script generates a random URL-safe password, writes it to the Cloudflare Worker Secret, and copies it to the clipboard. See "6. API Authentication" below for details.
 
-> Pages 部署完成后还需要在 Cloudflare Dashboard 中：
+> After Pages is deployed, you also need to configure it in the Cloudflare Dashboard:
 >
-> 1. 绑定 KV 命名空间 `SUB_STORE_DATA`
-> 2. 设置鉴权密码 Secret `SUB_STORE_FRONTEND_BACKEND_PATH`
+> 1. Bind key-value namespaces `SUB_STORE_DATA`
+> 2. Set the authentication password (Secret) `SUB_STORE_FRONTEND_BACKEND_PATH`
 >
-> 详细图文步骤见下文 [6. API 鉴权 → 方式 A.2 Pages 端](#6-api-鉴权强烈建议--已在第-4-步完成可跳过)。配置完成后必须再跑一次 `npm run deploy:pages` 让绑定生效。
+> Detailed steps with pictures are below. [6. API 鉴权 → 方式 A.2 Pages 端](#6-api-鉴权强烈建议--已在第-4-步完成可跳过)You must run it again after configuration. `npm run deploy:pages` Make the binding effective.
 
 <details>
-<summary><b>自定义域名注意事项（如果你绑定了自有域名）</b></summary>
+<summary><b>Important notes for custom domains (if you have bound your own domain)</b></summary>
 
-- SSL/TLS 加密模式必须设为 **Full**（Cloudflare Dashboard → 域名 → SSL/TLS → 概述）
-- Cloudflare 免费 SSL 证书只覆盖**一级子域名**（`*.example.com`），不支持多级子域名（如 `a.b.example.com`）
-  - 正确 `substore.example.com`
-  - 错误 `substore.sub.example.com`（会导致 `ERR_CONNECTION_CLOSED`）
+- The SSL/TLS encryption mode must be set to **Full** (Cloudflare Dashboard → Domain → SSL/TLS → Overview)
+- Cloudflare free SSL certificates only cover **first-level subdomains**.`*.example.com`Multi-level subdomains are not supported (e.g., `a.b.example.com`）
+  - correct `substore.example.com`
+  - mistake `substore.sub.example.com`(will lead to) `ERR_CONNECTION_CLOSED`）
 
 </details>
 
-### 5. 连接前端
+### 5. Connect to the front end
 
-打开 [Sub-Store 前端](https://sub-store.vercel.app)，后端地址格式：
+Open [Sub-Store 前端](https://sub-store.vercel.app)Backend address format:
 
 ```text
 你的域名/你的密码
 ```
 
-例如：
+For example:
 
 ```text
 https://sub-store-workers.your.workers.dev/aBc123XyZ
 https://sub-store.your.pages.dev/aBc123XyZ
 ```
 
-> 注意：**末尾的 `/密码` 不能省略**，否则 `/api/...` 会全部 401。
+> Note: ** at the end `/密码` ** cannot be omitted, otherwise `/api/...` All will be 401.
 
-部署完后访问 `https://你的域名/你的密码/api/utils/worker-status`，应返回：
+Access after deployment `https://你的域名/你的密码/api/utils/worker-status`The response should be:
 
 ```json
 { "kv": { "bound": true }, "auth": { "backendPathConfigured": true } }
 ```
 
-### 6. API 鉴权（强烈建议 / 已在第 4 步完成可跳过）
+### 6. API Authentication (Strongly recommended/Can be skipped if already completed in step 4)
 
-> 默认 API 无密码保护。**不设密码任何人都能管理你的订阅**。第 4 步执行 `npm run rotate-secret` 已经设过的话，可以跳过本节。
+> The default API has no password protection. **Anyone can manage your subscription without a password.** Step 4. `npm run rotate-secret` If you have already set this up, you can skip this section.
 
-> 推荐使用 **Worker / Pages Secret**（加密存储）。**不要**写到 `wrangler.toml [vars]` 里——那里是明文，会随 commit 泄漏，并且 `wrangler deploy` 会用它覆盖同名 Secret，与下面的流程冲突。
+> We recommend using **Worker/Pages Secret** (encrypted storage). **Do not** write to `wrangler.toml [vars]` Inside—that's plaintext, it will be leaked with commits, and `wrangler deploy` It will overwrite the Secret with the same name, which conflicts with the process below.
 
-#### 方式 A（推荐）：使用 Cloudflare Secret
+#### Method A (Recommended): Use Cloudflare Secret
 
-##### A.1 Workers 端（项目自带脚本）
+##### A.1 Workers side (project's built-in script)
 
-仓库提供了密钥轮换脚本，一行命令完成生成 + 写入 + 复制到剪贴板：
+The repository provides a key rotation script that completes the generation, writing, and copying to the clipboard in a single command:
 
 ```bash
 # Windows
@@ -201,207 +201,207 @@ npm run rotate-secret
 npm run rotate-secret:sh
 ```
 
-脚本会：
+The script will:
 
-- 用加密随机数生成 32 位 URL-safe 密码
-- 自动加 `/` 前缀
-- 通过管道写入 Cloudflare Worker Secret `SUB_STORE_FRONTEND_BACKEND_PATH`（密码不落盘、不显示在屏幕、不进入 shell 历史）
-- 复制到剪贴板，方便粘贴到前端配置
+- Generate a 32-bit URL-safe password using encrypted random numbers.
+- Automatic addition `/` prefix
+- Write Cloudflare Worker Secret via pipeline `SUB_STORE_FRONTEND_BACKEND_PATH`(Password is not written to disk, not displayed on the screen, and not accessed in shell history)
+- Copy to clipboard for easy pasting into front-end configuration.
 
-执行成功后，请同步更新：
+After successful execution, please update accordingly:
 
-1. 前端后端地址：`https://xxx.workers.dev<剪贴板里的新密码>`
-2. 如果使用 GitHub Actions 自动部署，还要更新仓库 Secret（如 `SUB_STORE_PASSWORD_VALUE`）
+1. Front-end and back-end addresses:`https://xxx.workers.dev<剪贴板里的新密码>`
+2. If you are using GitHub Actions for automated deployment, you also need to update the repository secret (e.g., `SUB_STORE_PASSWORD_VALUE`）
 
-> 用完后建议清空剪贴板：
+> It is recommended to clear the clipboard after use:
 > - PowerShell：`Set-Clipboard -Value $null`
 > - macOS：`pbcopy </dev/null`
-> - Linux：`wl-copy --clear` 或 `xsel --clipboard --clear`
+> - Linux：`wl-copy --clear` or `xsel --clipboard --clear`
 
-也可以手动设置（提示输入时填带 `/` 开头的密码）：
+You can also set it manually (fill in the input when prompted). `/` (Password at the beginning)
 
 ```bash
 npx wrangler secret put SUB_STORE_FRONTEND_BACKEND_PATH
 ```
 
-##### A.2 Pages 端（在 Dashboard 配置）
+##### A.2 Pages (Configured in Dashboard)
 
-`wrangler.toml` 的 `[[kv_namespaces]]` 与 `[vars]` **只对 Workers 生效**。Pages 项目必须在 Cloudflare Dashboard 单独绑定 KV 与设置密码，否则 API 会因为缺少 KV 而 500，且任何人都可访问管理 API。
+`wrangler.toml` of `[[kv_namespaces]]` and `[vars]` **This only applies to Workers.** Pages projects must have their key-value pairs (KVs) separately bound and passwords set in the Cloudflare Dashboard; otherwise, the API will return a 500 error due to the missing KVs, and anyone can access the management API.
 
-**① 进入 Workers & Pages，点击 sub-store 项目**
+**① Go to Workers & Pages and click on the sub-store project.**
 
-![进入项目](png/1.png)
+![Enter the project](png/1.png)
 
-**② 进入 设置 → 绑定，点击 + 添加 KV 命名空间**
+**② Go to Settings → Bindings, click + to add a KV namespace**
 
-![添加绑定](png/2.png)
+![Add binding](png/2.png)
 
-**③ 选择 KV 命名空间**
+**③ Select the KV namespace**
 
-![选择 KV](png/3.png)
+![Select KV](png/3.png)
 
-**④ 变量名填 `SUB_STORE_DATA`，选择对应 KV，保存**
+**④ Fill in the variable name `SUB_STORE_DATA`Select the corresponding KV and save.
 
-![保存绑定](png/4.png)
+![Save binding](png/4.png)
 
-**⑤ 进入 设置 → 变量和机密，点击 + 添加**
+**⑤ Go to Settings → Variables and Secrets, and click + to add**
 
-![添加变量](png/5.png)
+![Add variables](png/5.png)
 
-**⑥ 变量名填 `SUB_STORE_FRONTEND_BACKEND_PATH`，值填 `/你的密码`（必须带 `/` 开头），类型选 Secret（加密），保存**
+**⑥ Fill in the variable name `SUB_STORE_FRONTEND_BACKEND_PATH`, fill in the value `/你的密码`(Must be brought) `/` (Start with the first option), select Secret (encrypted) as the type, and save.
 
-![填写变量](png/6.png)
+![Fill in the variables](png/6.png)
 
-> 保存后必须重新部署 `npm run deploy:pages` 才能生效。
+> You must redeploy after saving. `npm run deploy:pages` Only then will it take effect.
 
-> Pages 不能跨项目共享 Worker Secret，建议把 Workers 与 Pages 的 `SUB_STORE_FRONTEND_BACKEND_PATH` 设为同一个值，方便前端切换。
+> Pages cannot share Worker Secrets across projects. It is recommended to separate Workers' and Pages' secrets. `SUB_STORE_FRONTEND_BACKEND_PATH` Set the same value for easy switching between front-end components.
 
-#### 方式 B（不推荐）：使用 `wrangler.toml [vars]` 明文变量
+#### Method B (not recommended): Use `wrangler.toml [vars]` plaintext variables
 
 ```toml
 [vars]
 SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
 ```
 
-> 仅在临时调试时使用。明文写仓库文件容易随 commit 泄漏；同时 `wrangler deploy` 会用它覆盖 Secret，破坏方式 A 的 CI/Secret 流程。生产环境请使用方式 A。
+> Use only for temporary debugging. Writing repository files in plaintext is prone to leakage with commits; at the same time... `wrangler deploy` This will overwrite the Secret, disrupting the CI/Secret process of method A. Please use method A in production environments.
 
-> 分享链接（download/preview）不受鉴权影响，无需密码即可访问。
+> Shared links (download/preview) are not subject to authentication and can be accessed without a password.
 
-> **分享按钮**：订阅列表里的“分享”按钮仅在通过密码前缀访问时显示（与上游 Docker/Node 部署的 `be_merge` 行为一致），未配置密码前缀的部署不会显示分享按钮。
+> **Share Button**: The "Share" button in the subscription list is only displayed when accessed via a password prefix (as opposed to upstream Docker/Node deployments). `be_merge` (Consistent behavior) Deployments without a configured password prefix will not display the share button.
 
 ---
 
-## 进阶配置 / 平台说明
+## Advanced Configuration / Platform Description
 
 <details>
-<summary><b>本地开发</b></summary>
+<summary><b>Local development</b></summary>
 
 ```bash
 npm run dev
 ```
 
-访问 `http://127.0.0.1:3000`。
+access `http://127.0.0.1:3000`。
 
 </details>
 
 <details>
-<summary><b>推送通知（Bark / Pushover）</b></summary>
+<summary><b>Push notifications (Bark / Pushover)</b></summary>
 
-支持 HTTP URL 推送方式。在 `wrangler.toml` 中配置：
+Supports HTTP URL push method. `wrangler.toml` Medium configuration:
 
 ```toml
 [vars]
 SUB_STORE_PUSH_SERVICE = "https://api.day.app/你的BarkKey/[推送标题]/[推送内容]"
 ```
 
-Pages 需要在 Dashboard 手动添加同名环境变量。不支持 shoutrrr（命令行工具）。
+Pages requires you to manually add an environment variable with the same name to the Dashboard. shoutrrr (command-line tool) is not supported.
 
 </details>
 
 <details>
-<summary><b>环境变量一览</b></summary>
+<summary><b>A list of environment variables</b></summary>
 
-| 变量 | 说明 | 必填 |
+| Variable | Description | Required |
 |---|---|---|
-| `SUB_STORE_FRONTEND_BACKEND_PATH` | API 路径前缀密码，推荐用 Worker Secret 管理 | 否（生产环境必设） |
-| `SUB_STORE_PUSH_SERVICE` | HTTP URL 推送地址 | 否 |
+| `SUB_STORE_FRONTEND_BACKEND_PATH` | API path prefix password, recommended to use Worker Secret for management | No (required in production environment) |
+| `SUB_STORE_PUSH_SERVICE` | HTTP URL Push Address | No |
 
 </details>
 
 <details>
-<summary><b>状态检查接口 / Script Operator 限制</b></summary>
+<summary><b>Status check interface/Script Operator limitations</b></summary>
 
 ```text
 https://你的域名/你的密码/api/utils/worker-status
 ```
 
-返回字段说明：
+Description of returned fields:
 
-- `kv.bound`：是否已正确绑定 KV
-- `auth.backendPathConfigured`：是否已配置鉴权
-- `auth.managementApiPublic`：管理 API 是否处于公开状态
-- `capabilities`：当前部署支持/不支持的能力（脚本操作、Gist 备份、Cron 等）
+- `kv.bound`Has the key-value pair (KV) been correctly bound?
+- `auth.backendPathConfigured`: Has authentication been configured?
+- `auth.managementApiPublic`Is the management API public?
+- `capabilities`: Capabilities that are currently supported/not supported in the deployment (script operations, Gist backups, Cron, etc.)
 
-**脚本操作（Script Operator）受限**：Cloudflare Workers 禁止 `eval` / `new Function`，本仓库在构建期将上游 `createDynamicFunction` 改为明确错误。替代方案：内置过滤/操作器、mihomo YAML patch、或在外部可信服务中执行脚本。
+**Script Operator Restriction:** Cloudflare Workers are prohibited. `eval` / `new Function`This repository will include upstream resources during the construction phase. `createDynamicFunction` Instead, explicitly state the error. Alternatives: built-in filters/operators, mihomo YAML patch, or execute a script within an external trusted service.
 
 </details>
 
 <details>
-<summary><b>esbuild 插件</b></summary>
+<summary><b>esbuild plugin</b></summary>
 
-| 插件 | 作用 |
+| Plugin | Function |
 |---|---|
-| `路径别名解析` | 解析 `@/` 导入，优先 Workers 覆盖 |
-| `eval 重写` | 将 eval() 调用替换为静态表达式 |
-| `peggy 预编译` | 构建时编译 PEG 文法，消除运行时 eval |
-| `Node 模块存根` | 存根 fs/crypto 等不可用模块 |
+| `路径别名解析` | Analysis `@/` Import, prioritize Workers coverage |
+| `eval 重写` Replace the eval() call with a static expression.
+| `peggy 预编译` | Compile PEG grammars at build time, eliminating runtime eval |
+| `Node 模块存根` | Unavailable modules such as stub fs/crypto |
 
 </details>
 
 <details>
-<summary><b>Cron 定时同步</b></summary>
+<summary><b>Cron scheduled synchronization</b></summary>
 
-Workers 版内置了 Cron Trigger，默认每天 **23:55（北京时间）** 自动同步 artifacts 到 Gist。
+The Workers version includes a built-in Cron Trigger, which automatically syncs artifacts to Gist every day at **23:55 (Beijing time)**.
 
-可在 `wrangler.toml` 修改频率：
+Available `wrangler.toml` Modification frequency:
 
 ```toml
 [triggers]
 crons = ["55 15 * * *"]  # UTC 时间，+8 即北京时间
 ```
 
-> 前提：在前端 Settings 中配置好 GitHub 用户名和 Gist Token。
+> Prerequisite: Configure your GitHub username and Gist Token in the front-end Settings.
 
 </details>
 
 <details>
-<summary><b>KV 读写优化</b></summary>
+<summary><b>KV read/write optimization</b></summary>
 
-Cloudflare KV 免费额度：读 10 万次/天，**写 1000 次/天**。
+Cloudflare KV free quota: 100,000 reads/day, **1,000 writes/day**.
 
-本项目已实现两层优化：
+This project has implemented two layers of optimization:
 
-- **脏标记**：仅在调用 `$.write()` / `$.delete()` 时标记脏位，纯读请求不触发写入
-- **内容对比**：写入前将当前数据与加载时的快照对比，内容相同则跳过写入（防止 `$.write()` 写回相同数据）
-- **边缘缓存**：KV 读取设置 60 秒 `cacheTtl`，短时间内多次请求命中边缘缓存，不计入 KV 读次数
+- **Dirty flag**: Only used when calling `$.write()` / `$.delete()` Mark the dirty bit; read requests do not trigger writes.
+- **Content Comparison:** Before writing, the current data is compared with the snapshot taken at the time of loading. If the content is the same, the writing is skipped (to prevent...). `$.write()` Write back the same data)
+- **Edge Buffer**: Key-Value Reads set to 60 seconds. `cacheTtl`Multiple requests hitting the edge cache within a short period of time are not counted in the key-value read count.
 
-| 操作 | KV 读 | KV 写 |
+| Operations | Key-Value Read | Key-Value Write |
 |---|---|---|
-| 打开前端浏览数据（~8 个请求） | 1 次（其余命中缓存） | 0 次 |
-| 修改订阅/设置 | 0~1 次 | 1 次 |
-| Cron 定时同步 | 1 次 | 1 次 |
+| Open frontend to browse data (~8 requests) | 1 time (the rest hit the cache) | 0 times |
+| Edit subscription/settings | 0~1 times | 1 time |
+| Cron scheduled synchronization | 1 time | 1 time |
 
-个人使用完全不用担心超额。
+For personal use, there is absolutely no need to worry about exceeding the limit.
 
 </details>
 
 <details>
-<summary><b>Workers 平台限制 / 不支持的功能</b></summary>
+<summary><b>Workers platform limitations/unsupported features</b></summary>
 
-### 平台限制
+### Platform restrictions
 
-| 限制 | 说明 |
+| Limitations | Explanation |
 |---|---|
-| **请求超时 30 秒** | 单次请求墙钟时间上限 30 秒，订阅源响应慢会超时失败 |
-| **出站 IP 为境外** | 从 Cloudflare 节点拉取订阅，部分限制国内 IP 的订阅源无法拉取 |
-| **推送通知** | 仅支持 HTTP URL 方式（Bark、Pushover 等），不支持 shoutrrr |
+| **Request Timeout 30 Seconds** | The maximum time for a single request to the wall clock is 30 seconds. Subscriptions will time out if the source response is slow.
+| **Outbound IP is overseas** | Subscriptions are pulled from Cloudflare nodes; some subscription sources that restrict access to domestic IPs cannot be pulled.
+Push notifications only support HTTP URLs (Bark, Pushover, etc.), not push notifications.
 
-> 如果你的订阅源限制国内访问或响应较慢，建议使用 VPS 自建 Node.js 版本。
+> If your subscription source restricts access to China or has slow response times, it is recommended to use a VPS-hosted Node.js version.
 
-### Node 专属功能（Workers 无法实现）
+### Node-specific features (not available in Workers)
 
-| 功能 | 原因 |
+| Function | Reason |
 |---|---|
-| 前端静态文件托管 | 需要 `express.static` + `fs`，无本地文件系统 |
-| 前端代理中间件 | 需要 `http-proxy-middleware`，Node 专属 |
-| MMDB IP 查询 | 需要读取本地 MMDB 文件（`@maxmind/geoip2-node`） |
-| MMDB 定时下载 | 需要 `fs.writeFile` 写入本地文件 |
-| DATA_URL 启动恢复 | 需要 Node `fs` 写文件 |
-| Gist 备份定时下载 | 从 Gist 下载恢复备份的 Cron（手动触发仍可用） |
-| `ip-flag-node.js` 脚本 | 依赖本地 MMDB，可用 `ip-flag.js`（HTTP API）替代 |
-| jsrsasign TLS 指纹 | 全局作用域限制 |
-| shoutrrr 推送 | 需要 `child_process` 执行命令行工具 |
-| 代理请求 | Workers 出站走 Cloudflare 网络，不支持自定义 HTTP/SOCKS5 代理 |
+| Front-end static file hosting | Required `express.static` + `fs`No local file system |
+| Front-end proxy middleware | Required `http-proxy-middleware`Node Exclusive |
+| MMDB IP Query | Requires reading a local MMDB file (`@maxmind/geoip2-node`） |
+Scheduled MMDB downloads are required. `fs.writeFile` Write to local file |
+| DATA_URL Startup Recovery | Requires Node.js `fs` Write file |
+| Scheduled Gist Backup Downloads | Cron script for downloading and restoring backups from Gist (also works when manually triggered) |
+| `ip-flag-node.js` Script | Depends on local MMDB, available `ip-flag.js`(HTTP API) Alternative |
+| jsrsasign TLS fingerprint | Global scope restrictions |
+| shoutrrr push| Need `child_process` Execute command-line tools |
+| Proxy Request | Workers outbound traffic uses the Cloudflare network and does not support custom HTTP/SOCKS5 proxies |
 
 </details>
 
@@ -410,31 +410,31 @@ Cloudflare KV 免费额度：读 10 万次/天，**写 1000 次/天**。
 ## FAQ
 
 <details>
-<summary><b>常见问题</b></summary>
+<summary><b>Frequently Asked Questions</b></summary>
 
-**Q: 前端提示 `找不到 Sub-Store Artifacts Repository`**
-A: 正常现象，你还没创建同步配置。创建第一个同步后会自动生成。
+**Q: Front-end prompts** `找不到 Sub-Store Artifacts Repository`**
+A: This is normal; you haven't created a synchronization configuration yet. It will be automatically generated after you create the first synchronization.
 
-**Q: 拉取订阅超时**
-A: Workers 单次请求上限 30 秒。如果订阅源响应慢，会超时失败。可尝试换一个订阅链接。
+**Q: Subscription pull timed out**
+A: Workers have a maximum request time of 30 seconds per request. If the subscription source is slow to respond, it will time out and fail. You can try a different subscription link.
 
-**Q: 某些订阅源返回空或报错**
-A: Workers 出站 IP 为境外 Cloudflare 节点，部分限制国内 IP 的订阅源无法拉取。
+**Q: Some subscription sources return empty or error**
+A: The outbound IP of the Workers is a Cloudflare node located outside of China, which means that some subscription sources that are restricted to domestic IPs cannot be fetched.
 
-**Q: 如何更新到最新版？**
-A: 见下方「同步更新」章节。
+Q: How do I update to the latest version?
+A: See the "Simultaneous Updates" section below.
 
-**Q: 忘了设置的密码怎么办？**
-A: Worker Secret 在 Dashboard 看不到原文，无法找回。直接 `npm run rotate-secret` 重置即可。
+Q: What if I forget the password I set?
+A: The Worker Secret is not visible in the Dashboard and cannot be retrieved. [Directly...] `npm run rotate-secret` Simply reset it.
 
 </details>
 
 ---
 
-## 同步更新
+## Synchronous updates
 
 <details>
-<summary><b>更新 sub-store-workers（本项目）</b></summary>
+<summary><b>Update sub-store-workers (this project)</b></summary>
 
 ```bash
 cd sub-store-workers
@@ -442,14 +442,14 @@ git pull
 npm run deploy
 ```
 
-> Worker Secret 不会被 deploy 覆盖，密码保持不变。
+> The Worker Secret will not be overwritten by deploy, and the password will remain unchanged.
 
 </details>
 
 <details>
-<summary><b>更新 Sub-Store 原始仓库</b></summary>
+<summary><b>Update the Sub-Store original repository</b></summary>
 
-当原始仓库有新版本时，手动执行：
+When a new version is available in the original repository, execute the following manually:
 
 ```bash
 cd Sub-Store
@@ -459,16 +459,16 @@ cd ../sub-store-workers
 npm run deploy
 ```
 
-esbuild 构建时会从 `Sub-Store/backend/src/` 读取最新源码，重新 build 即可包含新功能。
+esbuild will build from `Sub-Store/backend/src/` Read the latest source code and rebuild to include the new features.
 
 </details>
 
 <details>
-<summary><b>GitHub Actions 自动同步上游（推荐）</b></summary>
+<summary><b>GitHub Actions automatically syncs with upstream systems (recommended)</b></summary>
 
-仓库内置了 `.github/workflows/sync-upstream.yml` 工作流，每天自动检测 Sub-Store 上游更新并部署。
+The warehouse has built-in `.github/workflows/sync-upstream.yml` The workflow automatically detects and deploys updates to the Sub-Store upstream daily.
 
-#### 工作流程
+#### Workflow
 
 ```
 每天 00:00（北京时间）自动触发
@@ -484,109 +484,704 @@ esbuild 构建时会从 `Sub-Store/backend/src/` 读取最新源码，重新 bui
 任何环节失败 → Bark 通知"同步失败"，线上版本不受影响
 ```
 
-#### 配置步骤
+#### Configuration steps
 
-**1. 创建 Cloudflare API Token**
+**1. Create a Cloudflare API Token**
 
-打开 [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) → Create Token → **Custom Token**，添加以下权限：
+Open [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) → Create Token → **Custom Token**, add the following permissions:
 
-| 资源 | 权限 | 级别 |
+| Resources | Permissions | Levels |
 |---|---|---|
-| Account → Workers 脚本 | 编辑 | 你的账号 |
-| Account → Cloudflare Pages | 编辑 | 你的账号 |
-| Account → Workers KV 存储 | 编辑 | 你的账号 |
-| User → 用户详细信息 | 读取 | -- |
+| Account → Workers Script | Edit | Your Account |
+| Account → Cloudflare Pages | Edit | Your Account |
+| Account → Workers KV Storage | Edit | Your Account |
+| User → User Details | Read | -- |
 
-Account Resources 选择 **Include → 你的账号**。
+Account Resources: Select **Include → Your Account**.
 
-**2. 添加 GitHub Repository Secrets**
+**2. Add GitHub Repository Secrets**
 
-打开仓库 Settings → Secrets and variables → Actions → New repository secret，依次添加：
+Open the repository settings → Secrets and variables → Actions → New repository secret, and add the following in sequence:
 
-| Secret 名称 | 值 | 说明 |
+| Secret Name | Value | Description |
 |---|---|---|
-| `CLOUDFLARE_API_TOKEN` | 上一步创建的 Token | Cloudflare 部署认证 |
-| `CLOUDFLARE_ACCOUNT_ID` | 你的 Account ID | Cloudflare Dashboard 首页右侧可见 |
-| `KV_NAMESPACE_ID` | KV 命名空间 ID | 创建 KV 时返回的 id |
-| `PAGES_PROJECT_NAME` | Pages 项目名 | 例如 `sub-store` |
-| `WORKERS_SUBDOMAIN` | Workers 子域名 | 例如 `sub-store2`（即 `*.sub-store2.workers.dev` 中的部分）|
-| `BARK_KEY` | Bark 推送 Key | 可选，用于成功/失败通知 |
+| `CLOUDFLARE_API_TOKEN` | Token created in the previous step | Cloudflare deployment authentication |
+| `CLOUDFLARE_ACCOUNT_ID` Your Account ID | Visible on the right side of the Cloudflare Dashboard homepage |
+| `KV_NAMESPACE_ID` | Key-Value Namespace ID | The ID returned when creating the key-value store |
+| `PAGES_PROJECT_NAME` | Pages Project Name | For example `sub-store` |
+| `WORKERS_SUBDOMAIN` | Workers subdomain | For example `sub-store2`(Right now `*.sub-store2.workers.dev` (Part of the text)
+| `BARK_KEY` | Bark Push Key | Optional, used for success/failure notifications |
 
-**3. 手动触发验证**
+**3. Manually trigger verification**
 
-打开仓库 Actions 页面 → Sync Upstream Sub-Store → Run workflow → 勾选 `force = true` → Run。
+Open the repository Actions page → Sync Upstream Sub-Store → Run workflow → Check the box `force = true` → Run。
 
-全部绿色即配置成功，之后每天自动运行。
+Once all colors are green, the configuration is successful, and it will run automatically every day thereafter.
 
-#### 风险与失败场景
+#### Risk and failure scenarios
 
-| 场景 | 后果 | 处理方式 |
+| Scenario | Consequences | Handling Method |
 |---|---|---|
-| **上游测试未通过** | 不会部署，线上不受影响 | 等上游修复后下次自动重试 |
-| **构建失败**（上游引入了 Workers 不兼容的 API） | 不会部署 | 需要手动适配 `src/` 覆盖层，提 issue |
-| **Cloudflare API 超时/限流** | 部署中断 | 下次自动重试 |
-| **API Token 过期或权限不足** | 部署失败 | 重新创建 Token 并更新 GitHub Secret |
-| **上游大版本重构**（目录结构变化） | 构建失败 | 需要手动更新 esbuild 配置 |
-| **健康检查失败** | Workers/Pages 已部署但版本标记不更新 | 手动检查线上是否正常 |
+Upstream test failed. | Deployment will not proceed; production will not be affected. | Automatic retry will occur after upstream fix.
+**Build failed** (Upstream introduced an API incompatible with Workers) | Deployment issues | Manual adaptation required `src/` Overlay layer, raise an issue |
+**Cloudflare API Timeout/Rate Limiting** | Deployment Interrupted | Retry Automatically Next Time |
+| **API Token expired or insufficient permissions** | Deployment failed | Recreate the token and update the GitHub Secret |
+**Major Upstream Version Refactoring** (Directory Structure Changes) | Build Failed | Requires Manual Update of esbuild Configuration |
+**Health check failed** | Workers/Pages deployed but version tag not updated | Manually check if it's working properly online |
 
-> **安全提示**：Cloudflare API Token 和 Account ID 请通过 GitHub Secrets 管理，**不要**写入任何文件或提交到仓库。
+> **Security Tip:** Please manage your Cloudflare API Token and Account ID through GitHub Secrets, and **do not** write them to any files or commit them to a repository.
 
-> **手动触发**：任何时候都可以在 Actions 页面手动 Run workflow，`force = true` 会跳过版本检查强制部署。
+> **Manual Trigger:** You can manually run the workflow at any time on the Actions page.`force = true` It will skip version checks and force deployment.
 
 </details>
 
 ---
 
-## Surge 面板脚本
+## Surge panel script
 
 <details>
-<summary><b>展开查看</b></summary>
+<summary><b>Expand to view</b></summary>
 
-`surge/` 目录下提供了一个 Surge Panel 脚本，可在 Surge 面板中实时监控 Cloudflare Workers 用量。
+`surge/` The directory contains a Surge Panel script that allows you to monitor Cloudflare Worker usage in real time within the Surge panel.
 
-### 功能
+### Function
 
-- Workers / Pages 请求次数及占比
-- KV 读写次数
-- Sub-Store 订阅数量、后端版本（可选）
-- 中英文切换
+- Workers / Pages Request Count and Percentage
+- KV read/write count
+- Sub-Store subscription quantity, backend version (optional)
+- Chinese/English switching
 
-### 使用方式
+### How to use
 
-在 Surge 中安装模块：
+Installing modules in Surge:
 
 ```
 https://raw.githubusercontent.com/Yu9191/sub-store-workers/main/surge/SubStorePanel.sgmodule
 ```
 
-安装后编辑模块参数填入：
+After installation, edit the module parameters and enter:
 
-| 参数 | 说明 |
+| Parameters | Description |
 |---|---|
 | `ID` | Cloudflare Account ID |
 | `Token` | Cloudflare API Token |
-| `Limit` | 每日请求额度，默认 `100000` |
-| `SubStoreURL` | Sub-Store 后端地址（可选，如 `https://example.com/your-path`） |
-| `Lang` | 语言，`en` 或 `cn`，默认 `en` |
+| `Limit` Daily request limit, default `100000` |
+| `SubStoreURL` | Sub-Store backend address (optional, e.g.) `https://example.com/your-path`） |
+| `Lang` Language,`en` or `cn`,default `en` |
 
-### API Token 权限
+### API Token Permissions
 
-在 [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) 页面创建 **Custom Token**，只需开启 **1 个权限**：
+exist [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) To create a **Custom Token** on the page, you only need to enable **1 permission**:
 
-| 权限 | 级别 |
+Permissions | Level |
 |---|---|
 | Account Analytics | Read |
 
-建议过期时间选「无过期时间」。
+We recommend selecting "No expiration date" for the expiration time.
 
 </details>
 
 ---
 
-## 致谢
+## Acknowledgments
 
-基于 [Sub-Store](https://github.com/sub-store-org/Sub-Store) 项目，感谢原作者及所有贡献者。
+based on [Sub-Store](https://github.com/sub-store-org/Sub-Store) This project is a thank you to the original author and all contributors.
 
-## 许可证
+## license
 
 GPL V3
+
+
+<div align="center">
+<br>
+<img width="200" src="https://raw.githubusercontent.com/Yu9191/sub-store-workers/main/png/cloudflare4.png" alt="Sub-Store Workers">
+<br>
+<br>
+<h2 align="center">کارگران فروشگاه‌های فرعی</h2>
+</div>
+
+<p align="center" color="#6a737d">
+انتقال Workerهای Cloudflare به بک‌اند Sub-Store
+</p>
+
+<p align="center">
+<a href="https://deploy.workers.cloudflare.com/?url=https://github.com/Yu9191/sub-store-workers">
+<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare">
+</a>
+<br><br>
+<a href="mydocs/codemap/project-overview.md">
+<img src="https://img.shields.io/badge/Architecture-Project_Overview-blue?style=flat-square" alt="Project Overview">
+</a>
+</p>
+
+> **توجه:** دکمه‌ی استقرار با یک کلیک فقط برای مرجع است. از آنجایی که پروژه نیاز به ساخت محلی (esbuild + کد منبع Sub-Store) دارد، استقرار در واقع نمی‌تواند مستقیماً با استفاده از این دکمه تکمیل شود. لطفاً به موارد زیر مراجعه کنید...[手动部署步骤](#部署)。
+>
+> **استقرار خودکار:** این مخزن دارای یک گردش کار داخلی GitHub Actions است که به طور خودکار به‌روزرسانی‌ها را روزانه در Sub-Store بالادستی Cloudflare شناسایی و مستقر می‌کند. فعال کردن این قابلیت فقط نیاز به پیکربندی Secrets دارد؛ هیچ مداخله محلی لازم نیست. جزئیات را ببینید. [GitHub Actions 自动同步上游](#同步更新)。
+
+## مقدمه
+
+اراده [Sub-Store](https://github.com/sub-store-org/Sub-Store) بک‌اند روی Cloudflare Workers/Pages مستقر شده است، نیازی به سرور ندارد و استفاده از آن رایگان است.
+
+- **بدون سرور:** در حال اجرا بر روی شبکه لبه کلودفلر
+- **پایداری KV**: داده‌ها در Cloudflare KV ذخیره می‌شوند.
+- **عملکرد کامل:** از تمام منطق کسب‌وکار اصلی backend (مدیریت اشتراک، تبدیل قالب، دانلود، پیش‌نمایش و غیره) دوباره استفاده می‌کند.
+- **پارسِر از پیش کامپایل‌شده:** گرامرهای پگی در زمان ساخت کامپایل می‌شوند و از `eval()` در زمان اجرا اجتناب می‌کنند.
+
+## فهرست مطالب
+
+- [部署](#部署)(فرآیند اصلی، توصیه می‌شود از اینجا شروع کنید)
+- [进阶配置 / 平台说明](#进阶配置--平台说明)(اعلان‌های فشاری، متغیرهای محیطی، توسعه محلی و غیره از بین رفته‌اند)
+- [FAQ](#faq)
+- [同步更新](#同步更新)
+- [Surge 面板脚本](#surge-面板脚本)
+- [致谢](#致谢) ｜ [许可证](#许可证)
+
+<details>
+<summary><b>شرح معماری</b>(اگر فقط می‌خواهید مستقر شوید، از این مرحله صرف نظر کنید)</summary>
+
+```
+sub-store-workers/src/        ← Workers 适配层（6 个文件）
+Sub-Store/backend/src/        ← 原始后端源码（直接复用）
+esbuild.js                    ← 构建脚本，通过插件桥接两者
+```
+
+فقط لایه‌های مربوط به پلتفرم جایگزین شدند؛ منطق اصلی بدون تغییر باقی ماند.
+
+پرونده‌های کارگران | هدف |
+|---|---|
+| `vendor/open-api.js` | KV جایگزین fs و fetch جایگزین undici می‌شود.
+| `vendor/express.js` | workerها، هندلر fetch را اجرا می‌کنند. Node express
+| `core/app.js` | وارد کردن نسخه Worker از OpenAPI |
+| `utils/env.js` پایش محیطی |
+| `restful/token.js` | اجازه دادن به کارگران برای صدور توکن |
+| `index.js` | ورودی کارگران |
+
+برای جزئیات بیشتر در مورد طرح‌های جامع پروژه، لطفاً مراجعه کنید به [`mydocs/codemap/project-overview.md`](mydocs/codemap/project-overview.md)。
+
+</details>
+
+## مستقر کردن
+
+> مرور کلی استقرار: **۱. آماده‌سازی → ۲. آپلود Workerها/صفحات → ۳. تنظیم رمز عبور (الزامی) → ۴. اتصال به Frontend**
+>
+> چرا به هر دو بخش نیاز داریم؟`*.workers.dev` توسط فایروال بزرگ (GFW) در کشور مسدود شده است.`*.pages.dev` استفاده از CDN کلودفلر معمولاً امکان اتصال مستقیم را فراهم می‌کند.
+>
+> - **دامنه سفارشی موجود است:** تعداد کارگران کافی است.
+> - **بدون دامنه سفارشی: صفحات یک API به دنیای خارج ارائه می‌دهند و کارگران Cron را در پس‌زمینه اجرا می‌کنند.
+
+### ۱. مخزن کلونینگ
+
+```bash
+# 目录结构必须如下：
+# parent/
+#   ├── Sub-Store/          ← 原始后端源码
+#   └── sub-store-workers/  ← 本项目
+
+git clone https://github.com/sub-store-org/Sub-Store.git
+git clone https://github.com/Yu9191/sub-store-workers.git
+
+cd sub-store-workers
+npm install
+```
+
+### ۲. وارد کلودفلر شوید
+
+```bash
+npx wrangler login
+```
+
+### ۳. ایجاد یک فضای نام کلید-مقدار
+
+```bash
+npx wrangler kv namespace create SUB_STORE_DATA
+```
+
+باز خواهد گشت `id` پر کنید `wrangler.toml`:
+
+```toml
+[[kv_namespaces]]
+binding = "SUB_STORE_DATA"
+id = "你的KV命名空间ID"
+```
+
+### ۴. ساخت و استقرار
+
+هر دو باید مستقر شوند:
+
+| روش استقرار | نام دامنه | هدف |
+|---|---|---|
+| **کارگران** | `*.workers.dev` یا یک دامنه سفارشی | همگام‌سازی زمان‌بندی‌شده API + Cron |
+| **صفحات** | `*.pages.dev` | API (اتصال مستقیم در داخل چین موجود است) |
+
+> ⚠️ **قبل از اجرای دستورات استقرار زیر، لطفاً مطمئن شوید که سه مرحله زیر را انجام داده‌اید: «۱. کلون کردن مخزن»، «۲. ورود به Cloudflare» و «۳. ایجاد فضای نام KV» و بخش‌های زیر را با دقت بخوانید: «۵. اتصال به فرانت‌اند» و «۶. احراز هویت API».** **پس از استقرار، Worker تا زمانی که رمز عبور تنظیم نشود، عمومی است؛ هر کسی می‌تواند داده‌های شما را مدیریت کند.**
+
+```bash
+# Workers 部署（含 Cron Triggers）
+npm run deploy
+
+# Pages 部署（国内可用，一条命令）
+npm run deploy:pages
+```
+
+> **اکیدا توصیه می‌شود بلافاصله پس از استقرار، یک رمز عبور احراز هویت تنظیم کنید**، در غیر این صورت هر کسی می‌تواند داده‌های فروشگاه فرعی شما را مدیریت کند.
+>
+> ```bash
+> # Windows
+> npm run rotate-secret
+>
+> # Linux / macOS
+> npm run rotate-secret:sh
+> ```
+>
+> این اسکریپت یک رمز عبور تصادفی و ایمن برای URL ایجاد می‌کند، آن را در Cloudflare Worker Secret می‌نویسد و در کلیپ‌بورد کپی می‌کند. برای جزئیات بیشتر به بخش «۶. احراز هویت API» در زیر مراجعه کنید.
+
+> پس از استقرار Pages، باید آن را در داشبورد Cloudflare نیز پیکربندی کنید:
+>
+> ۱. اتصال فضاهای نام کلید-مقدار `SUB_STORE_DATA`
+> ۲. رمز عبور احراز هویت (مخفی) را تنظیم کنید `SUB_STORE_FRONTEND_BACKEND_PATH`
+>
+> مراحل دقیق به همراه تصاویر در ادامه آمده است. [6. API 鉴权 → 方式 A.2 Pages 端](#6-api-鉴权强烈建议--已在第-4-步完成可跳过)بعد از پیکربندی باید دوباره آن را اجرا کنید. `npm run deploy:pages` اتصال را مؤثر کنید.
+
+<details>
+<summary><b>نکات مهم برای دامنه‌های سفارشی (اگر دامنه خود را محدود کرده‌اید)</b></summary>
+
+- حالت رمزگذاری SSL/TLS باید روی **کامل** تنظیم شود (داشبورد کلودفلر → دامنه → SSL/TLS → نمای کلی)
+- گواهینامه‌های SSL رایگان کلودفلر فقط زیر دامنه‌های سطح اول را پوشش می‌دهند.`*.example.com`زیر دامنه‌های چند سطحی پشتیبانی نمی‌شوند (مثلاً `a.b.example.com`)
+  - درست `substore.example.com`
+  - اشتباه `substore.sub.example.com`(منجر خواهد شد به) `ERR_CONNECTION_CLOSED`)
+
+</details>
+
+### ۵. به قسمت جلویی (front end) متصل شوید
+
+باز [Sub-Store 前端](https://sub-store.vercel.app)قالب آدرس‌های بک‌اند:
+
+```text
+你的域名/你的密码
+```
+
+برای مثال:
+
+```text
+https://sub-store-workers.your.workers.dev/aBc123XyZ
+https://sub-store.your.pages.dev/aBc123XyZ
+```
+
+> توجه: ** در پایان `/密码` ** قابل حذف نیست، در غیر این صورت `/api/...` همه ۴۰۱ خواهند بود.
+
+دسترسی پس از استقرار `https://你的域名/你的密码/api/utils/worker-status`پاسخ باید این باشد:
+
+```json
+{ "kv": { "bound": true }, "auth": { "backendPathConfigured": true } }
+```
+
+### ۶. احراز هویت API (اکیدا توصیه می‌شود/اگر در مرحله ۴ تکمیل شده است، می‌توانید از آن صرف نظر کنید)
+
+> API پیش‌فرض هیچ رمز عبوری ندارد. **هر کسی می‌تواند اشتراک شما را بدون رمز عبور مدیریت کند.** مرحله ۴. `npm run rotate-secret` اگر قبلاً این مورد را تنظیم کرده‌اید، می‌توانید از این بخش صرف نظر کنید.
+
+> توصیه می‌کنیم از **Worker/Pages Secret** (حافظه رمزگذاری شده) استفاده کنید. **در آن** ننویسید. `wrangler.toml [vars]` درون - این متن ساده است، با کامیت‌ها فاش خواهد شد، و `wrangler deploy` این کار باعث می‌شود که فایل مخفی با همان نام قبلی بازنویسی شود که با فرآیند زیر در تضاد است.
+
+#### روش الف (توصیه شده): استفاده از Cloudflare Secret
+
+##### الف.۱ سمت کارگرها (اسکریپت داخلی پروژه)
+
+این مخزن یک اسکریپت چرخش کلید ارائه می‌دهد که تولید، نوشتن و کپی کردن در کلیپ‌بورد را در یک دستور واحد تکمیل می‌کند:
+
+```bash
+# Windows
+npm run rotate-secret
+
+# Linux / macOS
+npm run rotate-secret:sh
+```
+
+اسکریپت:
+
+- با استفاده از اعداد تصادفی رمزگذاری شده، یک رمز عبور 32 بیتی ایمن برای URL ایجاد کنید.
+- جمع خودکار `/` پیشوند
+- نوشتن رمز عبور کارگر Cloudflare از طریق pipeline `SUB_STORE_FRONTEND_BACKEND_PATH`(رمز عبور روی دیسک نوشته نمی‌شود، روی صفحه نمایش داده نمی‌شود و در تاریخچه پوسته قابل دسترسی نیست)
+- برای چسباندن آسان در پیکربندی front-end، آن را در کلیپ‌بورد کپی کنید.
+
+پس از اجرای موفقیت‌آمیز، لطفاً موارد زیر را به‌روزرسانی کنید:
+
+1. آدرس‌های فرانت‌اند و بک‌اند:`https://xxx.workers.dev<剪贴板里的新密码>`
+2. اگر از GitHub Actions برای استقرار خودکار استفاده می‌کنید، باید رمز مخزن (repository secret) را نیز به‌روزرسانی کنید (مثلاً `SUB_STORE_PASSWORD_VALUE`)
+
+> توصیه می‌شود پس از استفاده، کلیپ‌بورد را پاک کنید:
+> - پاورشل：`Set-Clipboard -Value $null`
+> - مک‌او‌اس：`pbcopy </dev/null`
+> - لینوکس：`wl-copy --clear` یا `xsel --clipboard --clear`
+
+همچنین می‌توانید آن را به صورت دستی تنظیم کنید (در صورت درخواست، ورودی را پر کنید). `/` (رمز عبور در ابتدا)
+
+```bash
+npx wrangler secret put SUB_STORE_FRONTEND_BACKEND_PATH
+```
+
+##### صفحات A.2 (پیکربندی شده در داشبورد)
+
+`wrangler.toml` از `[[kv_namespaces]]` و `[vars]` **این فقط برای Workerها اعمال می‌شود.** پروژه‌های Pages باید جفت‌های کلید-مقدار (KV) خود را به طور جداگانه به هم متصل کرده و رمزهای عبور را در داشبورد Cloudflare تنظیم کنند؛ در غیر این صورت، API به دلیل فقدان KVها خطای ۵۰۰ را برمی‌گرداند و هر کسی می‌تواند به API مدیریت دسترسی پیدا کند.
+
+**① به بخش کارگران و صفحات بروید و روی پروژه زیرفروشگاه کلیک کنید.**
+
+![وارد پروژه شوید](png/1.png)
+
+**② به تنظیمات → پیوندها بروید، برای افزودن فضای نام KV روی + کلیک کنید**
+
+![افزودن اتصال](png/2.png)
+
+**③ فضای نام KV را انتخاب کنید**
+
+![انتخاب KV](png/3.png)
+
+**④ نام متغیر را وارد کنید `SUB_STORE_DATA`KV مربوطه را انتخاب کرده و ذخیره کنید.
+
+![ذخیره اتصال](png/4.png)
+
+**⑤ به تنظیمات → متغیرها و رازها بروید و برای افزودن روی + کلیک کنید**
+
+![متغیرها را اضافه کنید](png/5.png)
+
+**⑥ نام متغیر را وارد کنید `SUB_STORE_FRONTEND_BACKEND_PATH`، مقدار را وارد کنید `/你的密码`(حتماً باید آورده شود) `/` (با اولین گزینه شروع کنید)، نوع (رمزگذاری شده) را Secret (رمزگذاری شده) انتخاب کنید و ذخیره کنید.
+
+![متغیرها را پر کنید](png/6.png)
+
+> بعد از ذخیره باید دوباره مستقر شوید. `npm run deploy:pages` تنها در این صورت است که اثر خواهد کرد.
+
+> صفحات نمی‌توانند اسرار کارگر را در بین پروژه‌ها به اشتراک بگذارند. توصیه می‌شود اسرار کارگران و صفحات را از هم جدا کنید. `SUB_STORE_FRONTEND_BACKEND_PATH` برای جابجایی آسان بین اجزای front-end، مقدار یکسانی را تنظیم کنید.
+
+#### روش ب (توصیه نمی‌شود): استفاده `wrangler.toml [vars]` متغیرهای متن ساده
+
+```toml
+[vars]
+SUB_STORE_FRONTEND_BACKEND_PATH = "/你的密码"
+```
+
+> فقط برای اشکال‌زدایی موقت استفاده شود. نوشتن فایل‌های مخزن به صورت متن ساده، مستعد نشت اطلاعات با کامیت‌ها است؛ در عین حال... `wrangler deploy` این کار باعث بازنویسی رمز (Secret) می‌شود و فرآیند CI/Secret روش A را مختل می‌کند. لطفاً در محیط‌های عملیاتی از روش A استفاده کنید.
+
+> لینک‌های اشتراک‌گذاری‌شده (دانلود/پیش‌نمایش) نیازی به احراز هویت ندارند و بدون رمز عبور قابل دسترسی هستند.
+
+> **دکمه اشتراک‌گذاری**: دکمه «اشتراک‌گذاری» در فهرست اشتراک‌ها فقط زمانی نمایش داده می‌شود که از طریق پیشوند رمز عبور قابل دسترسی باشد (برخلاف استقرارهای Docker/Node در بالادست). `be_merge` (رفتار ثابت) پیاده‌سازی‌های بدون پیشوند رمز عبور پیکربندی‌شده، دکمه اشتراک‌گذاری را نمایش نمی‌دهند.
+
+---
+
+## پیکربندی پیشرفته / توضیحات پلتفرم
+
+<details>
+<summary><b>توسعه محلی</b></summary>
+
+```bash
+npm run dev
+```
+
+دسترسی `http://127.0.0.1:3000`。
+
+</details>
+
+<details>
+<summary><b>اعلان‌های فشاری (Bark / Pushover)</b></summary>
+
+از روش ارسال URL از طریق HTTP پشتیبانی می‌کند. `wrangler.toml` پیکربندی متوسط:
+
+```toml
+[vars]
+SUB_STORE_PUSH_SERVICE = "https://api.day.app/你的BarkKey/[推送标题]/[推送内容]"
+```
+
+صفحات از شما می‌خواهند که به صورت دستی یک متغیر محیطی با همین نام را به داشبورد اضافه کنید. shoutrr (ابزار خط فرمان) پشتیبانی نمی‌شود.
+
+</details>
+
+<details>
+<summary><b>فهرستی از متغیرهای محیطی</b></summary>
+
+| متغیر | توضیحات | الزامی |
+|---|---|---|
+| `SUB_STORE_FRONTEND_BACKEND_PATH` | رمز عبور پیشوند مسیر API، توصیه می‌شود از Worker Secret برای مدیریت استفاده شود | خیر (در محیط عملیاتی الزامی است) |
+| `SUB_STORE_PUSH_SERVICE` | آدرس ارسال URL HTTP | خیر |
+
+</details>
+
+<details>
+<summary><b>محدودیت‌های رابط/عملگر اسکریپت برای بررسی وضعیت</b></summary>
+
+```text
+https://你的域名/你的密码/api/utils/worker-status
+```
+
+شرح فیلدهای برگشتی:
+
+- `kv.bound`آیا جفت کلید-مقدار (KV) به درستی مقید شده است؟
+- `auth.backendPathConfigured`آیا احراز هویت پیکربندی شده است؟
+- `auth.managementApiPublic`آیا API مدیریت عمومی است؟
+- `capabilities`قابلیت‌هایی که در حال حاضر در استقرار پشتیبانی می‌شوند/پشتیبانی نمی‌شوند (عملیات اسکریپت، پشتیبان‌گیری از Gist، Cron و غیره)
+
+**محدودیت اپراتور اسکریپت:** استفاده از کارگران Cloudflare ممنوع است. `eval` / `new Function`این مخزن شامل منابع بالادستی در طول مرحله ساخت و ساز خواهد بود. `createDynamicFunction` در عوض، خطا را صریحاً بیان کنید. جایگزین‌ها: فیلترها/عملگرهای داخلی، وصله YAML mihomo، یا اجرای یک اسکریپت در یک سرویس قابل اعتماد خارجی.
+
+</details>
+
+<details>
+<summary><b>افزونه esbuild</b></summary>
+
+| افزونه | تابع |
+|---|---|
+| `路径别名解析` | تحلیل `@/` واردات، اولویت‌بندی پوشش کارگران |
+| `eval 重写` فراخوانی eval() را با یک عبارت استاتیک جایگزین کنید.
+| `peggy 预编译` | کامپایل گرامرهای PEG در زمان ساخت، حذف ارزیابی زمان اجرا |
+| `Node 模块存根` | ماژول‌های غیرقابل دسترس مانند stub fs/crypto |
+
+</details>
+
+<details>
+<summary><b>همگام‌سازی زمان‌بندی‌شده‌ی کرون</b></summary>
+
+نسخهٔ Worker شامل یک Cron Trigger داخلی است که به‌طور خودکار هر روز ساعت **۲۳:۵۵ (به وقت پکن)** مصنوعات را با Gist همگام‌سازی می‌کند.
+
+موجود است `wrangler.toml` فرکانس اصلاح:
+
+```toml
+[triggers]
+crons = ["55 15 * * *"]  # UTC 时间，+8 即北京时间
+```
+
+> پیش‌نیاز: نام کاربری GitHub و توکن Gist خود را در تنظیمات front-end پیکربندی کنید.
+
+</details>
+
+<details>
+<summary><b>بهینه‌سازی خواندن/نوشتن KV</b></summary>
+
+سهمیه رایگان کلودفلر کی‌وی: ۱۰۰۰۰۰ بازدید در روز، **۱۰۰۰ بازدید در روز**.
+
+این پروژه دو لایه بهینه‌سازی را پیاده‌سازی کرده است:
+
+- **پرچم کثیف**: فقط هنگام تماس استفاده می‌شود `$.write()` / `$.delete()` بخش کثیف را علامت بزنید؛ درخواست‌های خواندن باعث نوشتن نمی‌شوند.
+- **مقایسه محتوا:** قبل از نوشتن، داده‌های فعلی با اسنپ‌شات گرفته شده در زمان بارگذاری مقایسه می‌شوند. اگر محتوا یکسان باشد، نوشتن رد می‌شود (برای جلوگیری از...). `$.write()` همان داده‌ها را دوباره بنویسید)
+- **بافر لبه**: زمان خواندن کلید-مقدار روی ۶۰ ثانیه تنظیم شده است. `cacheTtl`درخواست‌های متعددی که در مدت زمان کوتاهی به حافظه پنهان لبه (edge ​​cache) می‌رسند، در شمارش خواندن کلید-مقدار محاسبه نمی‌شوند.
+
+| عملیات | خواندن کلید-مقدار | نوشتن کلید-مقدار |
+|---|---|---|
+| باز کردن frontend برای مرور داده‌ها (حدود ۸ درخواست) | ۱ بار (بقیه به حافظه پنهان (cache) ارسال شد) | ۰ بار |
+| ویرایش اشتراک/تنظیمات | ۰~۱ بار | ۱ بار |
+| همگام‌سازی زمان‌بندی‌شده‌ی کرون | ۱ بار | ۱ بار |
+
+برای استفاده شخصی، مطلقاً نیازی به نگرانی در مورد تجاوز از حد مجاز نیست.
+
+</details>
+
+<details>
+<summary><b>محدودیت‌های پلتفرم Worker/ویژگی‌های پشتیبانی نشده</b></summary>
+
+### محدودیت‌های پلتفرم
+
+| محدودیت‌ها | توضیحات |
+|---|---|
+| **مهلت درخواست ۳۰ ثانیه** | حداکثر زمان برای یک درخواست به ساعت دیواری ۳۰ ثانیه است. در صورت کند بودن پاسخ منبع، اشتراک‌ها با وقفه مواجه می‌شوند.
+| **آی‌پی خروجی خارج از کشور است** | اشتراک‌ها از گره‌های Cloudflare حذف می‌شوند؛ برخی از منابع اشتراک که دسترسی به آی‌پی‌های داخلی را محدود می‌کنند، قابل حذف نیستند.
+اعلان‌های فشاری فقط از URLهای HTTP (مانند Bark، Pushover و غیره) پشتیبانی می‌کنند، نه اعلان‌های فشاری.
+
+> اگر منبع اشتراک شما دسترسی به چین را محدود می‌کند یا زمان پاسخگویی کندی دارد، توصیه می‌شود از نسخه Node.js میزبانی شده توسط VPS استفاده کنید.
+
+### ویژگی‌های خاص گره (در Workerها موجود نیست)
+
+| عملکرد | دلیل |
+|---|---|
+| میزبانی فایل استاتیک front-end | الزامی `express.static` + `fs`بدون سیستم فایل محلی |
+| میان‌افزار پروکسی front-end | الزامی `http-proxy-middleware`اختصاصی نود |
+| پرس و جوی IP MMDB | نیاز به خواندن یک فایل MMDB محلی دارد (`@maxmind/geoip2-node`） |
+دانلودهای زمان‌بندی‌شده‌ی MMDB الزامی است. `fs.writeFile` نوشتن در فایل محلی |
+| بازیابی راه‌اندازی DATA_URL | به Node.js نیاز دارد `fs` نوشتن فایل |
+| دانلودهای زمان‌بندی‌شده‌ی پشتیبان‌گیری از Gist | اسکریپت Cron برای دانلود و بازیابی پشتیبان‌ها از Gist (همچنین در صورت فعال‌سازی دستی نیز کار می‌کند) |
+| `ip-flag-node.js` اسکریپت | بستگی به MMDB محلی دارد، در دسترس است `ip-flag.js`جایگزین (HTTP API) |
+| اثر انگشت TLS با jsrsasign | محدودیت‌های دامنه سراسری |
+| فریاد بزن فشار بده | نیاز `child_process` اجرای ابزارهای خط فرمان |
+| درخواست پروکسی | ترافیک خروجی کارگران از شبکه Cloudflare استفاده می‌کند و از پروکسی‌های سفارشی HTTP/SOCKS5 پشتیبانی نمی‌کند.
+
+</details>
+
+---
+
+## سوالات متداول
+
+<details>
+<summary><b>سوالات متداول</b></summary>
+
+**س: درخواست‌های front-end** `找不到 Sub-Store Artifacts Repository`**
+الف) این طبیعی است؛ شما هنوز پیکربندی همگام‌سازی ایجاد نکرده‌اید. این پیکربندی پس از ایجاد اولین همگام‌سازی، به طور خودکار ایجاد خواهد شد.
+
+**س: مهلت اشتراک به پایان رسید**
+الف) حداکثر زمان درخواست برای هر درخواست توسط workerها 30 ثانیه است. اگر منبع اشتراک در پاسخ دادن کند باشد، زمان آن تمام می‌شود و از کار می‌افتد. می‌توانید لینک اشتراک دیگری را امتحان کنید.
+
+**س: برخی از منابع اشتراک، خالی یا خطا برمی‌گردانند**
+الف) آی‌پی خروجی کارگران، یک گره Cloudflare است که در خارج از چین قرار دارد، به این معنی که برخی از منابع اشتراک که محدود به آی‌پی‌های داخلی هستند، قابل دریافت نیستند.
+
+س: چگونه به آخرین نسخه به‌روزرسانی کنم؟
+پاسخ: به بخش «به‌روزرسانی‌های همزمان» در زیر مراجعه کنید.
+
+س: اگر رمز عبوری را که تنظیم کرده‌ام فراموش کنم، چه می‌شود؟
+الف) راز کارگر در داشبورد قابل مشاهده نیست و قابل بازیابی نیست. [مستقیماً...] `npm run rotate-secret` به سادگی آن را دوباره تنظیم کنید.
+
+</details>
+
+---
+
+## به‌روزرسانی‌های همزمان
+
+<details>
+<summary><b>به‌روزرسانی کارگران فرعی فروشگاه (این پروژه)</b></summary>
+
+```bash
+cd sub-store-workers
+git pull
+npm run deploy
+```
+
+> رمز کارگر با استقرار رونویسی نمی‌شود و رمز عبور بدون تغییر باقی می‌ماند.
+
+</details>
+
+<details>
+<summary><b>مخزن اصلی Sub-Store را به‌روزرسانی کنید</b></summary>
+
+وقتی نسخه جدیدی در مخزن اصلی موجود است، موارد زیر را به صورت دستی اجرا کنید:
+
+```bash
+cd Sub-Store
+git pull
+
+cd ../sub-store-workers
+npm run deploy
+```
+
+esbuild از روی آن خواهد ساخت `Sub-Store/backend/src/` آخرین کد منبع را بخوانید و برای گنجاندن ویژگی‌های جدید، آن را بازسازی کنید.
+
+</details>
+
+<details>
+<summary><b>GitHub Actions به طور خودکار با سیستم‌های بالادستی همگام‌سازی می‌شود (توصیه می‌شود)</b></summary>
+
+انبار داخلی دارد `.github/workflows/sync-upstream.yml` این گردش کار به طور خودکار به‌روزرسانی‌ها را روزانه در فروشگاه فرعی بالادستی شناسایی و اعمال می‌کند.
+
+#### گردش کار
+
+```
+每天 00:00（北京时间）自动触发
+  ↓
+拉取上游最新 commit，对比已部署版本
+  ↓ 有更新
+安装依赖 → 运行上游测试套件
+  ↓ 测试通过
+构建 → 部署 Workers → 部署 Pages → 健康检查
+  ↓ 全部成功
+记录已部署版本 + Bark 通知
+
+任何环节失败 → Bark 通知"同步失败"，线上版本不受影响
+```
+
+#### مراحل پیکربندی
+
+**۱. یک توکن API کلودفلر ایجاد کنید**
+
+باز [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) → ایجاد توکن → **توکن سفارشی**، مجوزهای زیر را اضافه کنید:
+
+| منابع | مجوزها | سطوح |
+|---|---|---|
+| حساب کاربری → اسکریپت کارگران | ویرایش | حساب کاربری شما |
+| حساب کاربری → صفحات کلودفلر | ویرایش | حساب کاربری شما |
+| حساب کاربری → انبار KV کارگران | ویرایش | حساب کاربری شما |
+| کاربر → جزئیات کاربر | خواندن | -- |
+
+منابع حساب: **شامل شدن → حساب شما** را انتخاب کنید.
+
+**۲. اضافه کردن اسرار مخزن گیت‌هاب**
+
+تنظیمات مخزن → رازها و متغیرها → اقدامات → راز مخزن جدید را باز کنید و موارد زیر را به ترتیب اضافه کنید:
+
+| نام مخفی | مقدار | توضیحات |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | توکن ایجاد شده در مرحله قبل | احراز هویت استقرار Cloudflare |
+| `CLOUDFLARE_ACCOUNT_ID` شناسه حساب شما | در سمت راست صفحه اصلی داشبورد کلودفلر قابل مشاهده است |
+| `KV_NAMESPACE_ID` | شناسه‌ی فضای نام کلید-مقدار | شناسه‌ای که هنگام ایجاد مخزن کلید-مقدار بازگردانده می‌شود |
+| `PAGES_PROJECT_NAME` | نام پروژه صفحات | به عنوان مثال `sub-store` |
+| `WORKERS_SUBDOMAIN` | زیردامنه کارگران | برای مثال `sub-store2`(همین الان `*.sub-store2.workers.dev` (بخشی از متن)
+| `BARK_KEY` | کلید فشاری پارس | اختیاری، برای اعلان‌های موفقیت/شکست استفاده می‌شود |
+
+**۳. فعال‌سازی دستی تأیید**
+
+صفحه اقدامات مخزن را باز کنید → همگام‌سازی زیر-فروشگاه بالادستی → اجرای گردش کار → کادر را علامت بزنید `force = true` → دویدن.
+
+زمانی که همه رنگ‌ها سبز شدند، پیکربندی موفقیت‌آمیز بوده و پس از آن هر روز به طور خودکار اجرا خواهد شد.
+
+#### سناریوهای ریسک و شکست
+
+| سناریو | پیامدها | روش برخورد |
+|---|---|---|
+تست بالادستی ناموفق بود. | استقرار ادامه نخواهد یافت؛ تولید تحت تأثیر قرار نخواهد گرفت. | پس از رفع مشکل بالادستی، تلاش مجدد خودکار انجام خواهد شد.
+**ساخت ناموفق بود** (Upstream یک API ناسازگار با Workerها معرفی کرد) | مشکلات استقرار | نیاز به تطبیق دستی `src/` لایه رویی، طرح یک مشکل |
+**محدودیت زمان/سرعت API کلودفلر** | استقرار متوقف شد | دفعه بعد به صورت خودکار دوباره امتحان کنید |
+| **نشانه API منقضی شده یا مجوزهای کافی ندارد** | استقرار ناموفق بود | نشانه را دوباره ایجاد کنید و راز گیت‌هاب را به‌روزرسانی کنید |
+**بازسازی اساسی نسخه بالادستی** (تغییرات ساختار دایرکتوری) | ساخت ناموفق | نیاز به به‌روزرسانی دستی پیکربندی esbuild دارد |
+**بررسی سلامت ناموفق بود** | Workerها/صفحات مستقر شدند اما برچسب نسخه به‌روزرسانی نشد | به‌صورت دستی بررسی کنید که آیا به‌صورت آنلاین به‌درستی کار می‌کند یا خیر |
+
+> **نکته امنیتی:** لطفاً توکن API کلودفلر و شناسه حساب خود را از طریق GitHub Secrets مدیریت کنید و **آنها را** در هیچ فایلی ننویسید یا در مخزنی ثبت نکنید.
+
+> **راه‌اندازی دستی:** شما می‌توانید گردش کار را در هر زمانی در صفحه اقدامات به صورت دستی اجرا کنید.`force = true` این کار بررسی نسخه را رد می‌کند و استقرار را اجباری می‌کند.
+
+</details>
+
+---
+
+## اسکریپت پنل سرج
+
+<details>
+<summary><b>برای مشاهده، گسترش دهید</b></summary>
+
+`surge/` این دایرکتوری حاوی یک اسکریپت Surge Panel است که به شما امکان می‌دهد میزان استفاده از Cloudflare Worker را به صورت بلادرنگ در پنل Surge نظارت کنید.
+
+### عملکرد
+
+- تعداد و درصد درخواست‌های کارگران/صفحات
+- تعداد خواندن/نوشتن KV
+- تعداد اشتراک زیر فروشگاه، نسخه پشتیبان (اختیاری)
+- تعویض چینی/انگلیسی
+
+### نحوه استفاده
+
+نصب ماژول‌ها در Surge:
+
+```
+https://raw.githubusercontent.com/Yu9191/sub-store-workers/main/surge/SubStorePanel.sgmodule
+```
+
+پس از نصب، پارامترهای ماژول را ویرایش کرده و وارد کنید:
+
+| پارامترها | توضیحات |
+|---|---|
+| `ID` | شناسه حساب کلودفلر |
+| `Token` | توکن API کلودفلر |
+| `Limit` محدودیت درخواست روزانه، پیش‌فرض `100000` |
+| `SubStoreURL` | آدرس بک‌اند فروشگاه فرعی (اختیاری، مثلاً) `https://example.com/your-path`） |
+| `Lang` زبان،`en` یا `cn`، پیش‌فرض `en` |
+
+### مجوزهای توکن API
+
+وجود داشته باشد [Cloudflare API Tokens](https://dash.cloudflare.com/profile/api-tokens) برای ایجاد یک **توکن سفارشی** در صفحه، فقط باید **1 مجوز** را فعال کنید:
+
+مجوزها | سطح |
+|---|---|
+| تحلیل حساب کاربری | مطالعه |
+
+توصیه می‌کنیم برای تاریخ انقضا، گزینه «بدون تاریخ انقضا» را انتخاب کنید.
+
+</details>
+
+---
+
+## تقدیرنامه‌ها
+
+مبتنی بر [Sub-Store](https://github.com/sub-store-org/Sub-Store) این پروژه تشکری از نویسنده اصلی و همه مشارکت‌کنندگان است.
+
+## مجوز
+
+مجوز عمومی نسخه ۳ (GPL V3)
+
